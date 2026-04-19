@@ -1,0 +1,12 @@
+#ifndef CONSTANT
+#define CONSTANT
+
+#define PORT 8888
+#define SERVER_IP "10.196.41.93"
+#define BUFFER_SIZE 1024
+#define UNIT_SECOND 1000000000LL
+#define SYNC_INTERVAL 2LL
+#define LOG false
+#define SAMPLE_RATE 44100LL
+
+#endif
