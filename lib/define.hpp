@@ -9,5 +9,7 @@
 #define LOG false
 #define SAMPLE_RATE 44100LL
 #define JOIN_SYNC_COUNT 10
+#define TCP_PORT 8080
+#define MUSIC_DIR "/music/"
 
 #endif

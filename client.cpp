@@ -8,6 +8,7 @@
 #include "lib/functions.hpp"
 #include "lib/define.hpp"
 #include "lib/player.hpp"
+#include "fileServer/client.hpp"
 using namespace std;
 
 int uid, socketfd;
@@ -16,6 +17,7 @@ bool hasJoined = false;
 int syncCount = 0;
 int recvSyncCount = 0;
 bool isStateFetched = false;
+string songName;
 mutex sendMutex;
 
 Time clientClock;
@@ -82,7 +84,6 @@ void handleLeave(Message msg){
     }
 }
 
-
 void handleSync(Message msg){
     ll t1 = msg.timestamps[0];
     ll t2 = msg.timestamps[1];
@@ -99,22 +100,42 @@ void handleSync(Message msg){
 }
 
 void handlePlay(Message msg) {
-    printf("\nPlaying...\n");
+    ma_sound_stop(&sound);
     ll now = getServerTime(clientClock);
     ll scheduleServerTime = msg.timestamps[0];
     ll diff = scheduleServerTime - now;
-
+    string newSongName(msg.data);
+    if (songName != newSongName){
+        songName = newSongName;
+        if (!downloadSong(songName)) {
+            printf("[ERROR] Could not download song, aborting playback\n");
+            return;
+        }
+        newSongName = filePath("/music/") + newSongName;
+        loadSong(newSongName);
+        printf("[UPDATE] Now playing: %s\n", songName.c_str());
+    }else{
+        printf("[EVENT] Playing\n");
+    }
     if (diff > 0) {
         waitUntil(scheduleServerTime, clientClock);
-        playFromSample(msg.timestamps[1]);
+        ll actualNow = getServerTime(clientClock);
+        ll late_ns = actualNow - scheduleServerTime;
+        ll late_samples = (late_ns * SAMPLE_RATE) / 1000000000LL;
+        ll sample_pos = msg.timestamps[1] + late_samples;
+        if (sample_pos < 0) sample_pos = 0;
+        playFromSample(sample_pos);
+
     } else {
-        ll sample_pos = ((-diff * SAMPLE_RATE) / 1000000000LL )+ msg.timestamps[1]; 
+        ll late_ns = -diff;
+        ll sample_pos = msg.timestamps[1] + (late_ns * SAMPLE_RATE) / 1000000000LL;
+        if (sample_pos < 0) sample_pos = 0;
         playFromSample(sample_pos);
     }
 }
 
 void handlePause(){
-    printf("\nPausing...\n");
+    printf("\n[EVENT] Paused\n");
     ma_sound_stop(&sound);
 }
 
@@ -133,8 +154,8 @@ void autoSync(){
 
 int main(){
     srand(time(0));
-    initAudio(filePath("/music/song.mp3").c_str());
     uid = rand();
+    initAudio();
     signal(SIGINT, leaveRoom);
     socketfd = socket(AF_INET, SOCK_DGRAM, 0);
     address.sin_family = AF_INET;

@@ -13,16 +13,8 @@ using namespace std;
 ma_engine engine;
 ma_sound  sound;
 
-void initAudio(const char* file) {
-    if (ma_engine_init(NULL, &engine) != MA_SUCCESS) {
-        printf("[ERROR] Failed to init audio engine\n");
-        return;
-    }
-    if (ma_sound_init_from_file(&engine, file, 0, NULL, NULL, &sound) != MA_SUCCESS) {
-        printf("[ERROR] Failed to load file: %s\n", file);
-        return;
-    }
-    printf("[AUDIO] Loaded: %s\n", file);
+void initAudio() {
+    ma_engine_init(NULL, &engine);
 }
 
 void playFromSample(ll sample_pos) {
@@ -33,6 +25,14 @@ void playFromSample(ll sample_pos) {
 void cleanupAudio() {
     ma_sound_uninit(&sound);
     ma_engine_uninit(&engine);
+}
+
+void loadSong(const string& path){
+    ma_sound_stop(&sound);
+    ma_sound_uninit(&sound);
+    if (ma_sound_init_from_file(&engine, path.c_str(), 0, NULL, NULL, &sound) != MA_SUCCESS){
+        printf("[ERROR] Failed to load: %s\n", path.c_str());
+    }
 }
 
 #endif

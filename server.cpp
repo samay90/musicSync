@@ -4,9 +4,12 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <csignal>
+#include <sys/sendfile.h>
+#include <fcntl.h>
 #include "lib/types.hpp"
 #include "lib/functions.hpp"
 #include "lib/define.hpp"
+#include "fileServer/server.hpp"
 using namespace std;
 
 int socketfd;
@@ -33,6 +36,7 @@ void sendState(){
     msg.type = musicState.isPlaying ? MessageType::PLAY : MessageType::PAUSE;
     msg.timestamps[0] = musicState.timeStamp;
     msg.timestamps[1] = musicState.position;
+    strcpy(msg.data, musicState.name);
     broadcast(msg);
 }
 
@@ -85,20 +89,26 @@ void handleSync(Message msg){
 }
 
 void handlePlay(){
-    printf("\nPlaying...\n");
+    if (musicState.name[0] == '\0'){
+        printf("[ERROR] No song selected\n");
+        return;
+    }
+    printf("\n[EVENT] Playing\n");
     ll now = getTime();
     Message msg;
     msg.type = MessageType::PLAY;
     msg.uid = -1;
+    strcpy(msg.data, musicState.name);
+    musicState.isPlaying = true;
     msg.timestamps[0] = now + UNIT_SECOND;
     msg.timestamps[1] = musicState.position;
-    musicState.isPlaying = true;
     musicState.timeStamp = msg.timestamps[0];
+    musicState.position = msg.timestamps[1];
     broadcast(msg);
 }
 
 void handlePause(){
-    printf("\nPausing...\n");
+    printf("\n[EVENT] Paused\n");
     if (!musicState.isPlaying){
         return;
     }
@@ -111,6 +121,7 @@ void handlePause(){
     msg.type = MessageType::PAUSE;
     broadcast(msg);
 }
+
 void listner(){
     while (1){
         Message msg;
@@ -135,12 +146,75 @@ void printInstructions(){
     cout << "1. JOIN\n2. SYNC\n3. PLAY\n4. PAUSE" << endl;
 }
 
+void listSongs(){
+    string songs = runCommand("ls " + filePath("/music/") + " | grep '\\.mp3$' | sed 's/\\.mp3$//' | nl -w1 -s'. '");
+    printf("------ Available Songs ------\n");
+    cout << songs << endl;
+    cout << endl;
+}
+
+string getSongName(int number) {
+    if (number <= 0){
+        printf("[ERROR] Song number must be greater than 0\n");
+        return "";
+    }
+    string cmd = "ls " + filePath("/music/") + " | grep '\\.mp3$' | sed -n '" + to_string(number) + "p' 2>/dev/null";
+    string name = runCommand(cmd);
+    if (!name.empty() && name.back() == '\n') name.pop_back();
+    if (name.empty()){
+        printf("[ERROR] No song at number %d\n", number);
+        return "";
+    }
+    return name;
+}
+
+void handleChangeMusic(string songString){
+    int songNumber;
+    try{
+        songNumber = stoi(songString);
+    }
+    catch(const std::exception& e){
+        printf("[ERROR] Invalid song number\n");
+        return;
+    }
+    
+    string songName = getSongName(songNumber);
+    if (songName.empty()){
+        return;
+    }
+    cout << "[UPDATE] Now playing: " << songName << endl;
+    musicState.position = 0;
+    strcpy(musicState.name, songName.c_str());
+    handlePlay();
+}
+
+void handleSeek(int offset){
+    printf("\n[EVENT] Seek %ds\n", offset);
+    ll now = getTime();
+    if (musicState.isPlaying){
+        ll elapsed_ns = now - musicState.timeStamp;
+        musicState.position += (elapsed_ns * SAMPLE_RATE) / 1000000000LL;
+    }
+    musicState.position += (ll)(offset * SAMPLE_RATE);
+    if (musicState.position < 0) musicState.position = 0;
+    musicState.timeStamp = now;
+    if (musicState.isPlaying){
+        Message msg;
+        msg.type = MessageType::PLAY;
+        msg.uid = -1;
+        msg.timestamps[0] = now + UNIT_SECOND;
+        msg.timestamps[1] = musicState.position;
+        musicState.timeStamp = msg.timestamps[0];
+        broadcast(msg);
+    }
+}
+
 
 int main(){
     musicState.isPlaying = false;
     musicState.position = 0;
-    musicState.timeStamp = getTime();
-    strcpy(musicState.name, "song.mp3");
+    musicState.timeStamp = -1;
+    musicState.name[0] = '\0';
 
     signal(SIGINT, handleExit);
     socketfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -150,17 +224,31 @@ int main(){
     address.sin_port = htons(PORT);
     bind(socketfd, (struct sockaddr*)&address, sizeof(address));
     thread t1(listner);
+    thread t2(tcpFileServer);
     printInstructions();
     while (1){
         char buffer;
         cin >> buffer;
-        if (buffer == '3'){
+        if (buffer == '1'){
+            listSongs();
+        }else if (buffer == '2'){
+            cout << "Enter song number: ";
+            string song; cin >> song;
+            cout << endl;
+            handleChangeMusic(song);
+        }
+        else if (buffer == '3'){
             handlePlay();
         }else if (buffer == '4'){
             handlePause();
+        }else if (buffer == '5'){
+            handleSeek(10);
+        }else if (buffer == '6'){
+            handleSeek(-10);
         }
     }
     t1.join();
+    t2.join();
     close(socketfd);
     return 0;
 }
