@@ -8,5 +8,6 @@
 #define SYNC_INTERVAL 2LL
 #define LOG false
 #define SAMPLE_RATE 44100LL
+#define JOIN_SYNC_COUNT 10
 
 #endif

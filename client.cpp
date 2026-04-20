@@ -13,12 +13,34 @@ using namespace std;
 int uid, socketfd;
 sockaddr_in address;
 bool hasJoined = false;
+int syncCount = 0;
+int recvSyncCount = 0;
+bool isStateFetched = false;
+mutex sendMutex;
+
 Time clientClock;
 
 void sendPacket(Message msg){
     if (!hasJoined && msg.type != MessageType::JOIN) return;
+    lock_guard<mutex> lock(sendMutex);
     sendto(socketfd, &msg, sizeof(msg), 0, (sockaddr*)&address, sizeof(address));
 }
+
+void sync(){
+    Message msg;
+    msg.type = MessageType::SYNC;
+    msg.uid = uid;
+    msg.timestamps[0] = getTime();
+    sendPacket(msg);
+}
+
+void askForState(){
+    Message msg;
+    msg.type = MessageType::STATE;
+    msg.uid = uid;
+    sendPacket(msg);
+}
+
 
 void joinRoom(){
     printf("Enter your name: ");
@@ -60,13 +82,6 @@ void handleLeave(Message msg){
     }
 }
 
-void sync(){
-    Message msg;
-    msg.type = MessageType::SYNC;
-    msg.uid = uid;
-    msg.timestamps[0] = getTime();
-    sendPacket(msg);
-}
 
 void handleSync(Message msg){
     ll t1 = msg.timestamps[0];
@@ -80,6 +95,7 @@ void handleSync(Message msg){
     if (LOG){
         printf("[SYNC] minRTT: %lld, offset: %lld\n", clientClock.minRTT, clientClock.offset);
     }
+    recvSyncCount++;
 }
 
 void handlePlay(Message msg) {
@@ -89,26 +105,31 @@ void handlePlay(Message msg) {
     ll diff = scheduleServerTime - now;
 
     if (diff > 0) {
-        printf("[MUSIC] Starting in %.2f ms\n", diff / 1e6);
         waitUntil(scheduleServerTime, clientClock);
-        playFromSample(0);
+        playFromSample(msg.timestamps[1]);
     } else {
-        ll sample_pos = (-diff * SAMPLE_RATE) / 1000000000LL;
-        printf("[MUSIC] Late by %.2f ms, seeking to sample %lld\n",-diff / 1e6, sample_pos);
+        ll sample_pos = ((-diff * SAMPLE_RATE) / 1000000000LL )+ msg.timestamps[1]; 
         playFromSample(sample_pos);
     }
+}
+
+void handlePause(){
+    printf("\nPausing...\n");
+    ma_sound_stop(&sound);
 }
 
 void autoSync(){
     ll prev = INT_MIN;
     while (1){
         ll now = getTime();
-        if (now - prev > UNIT_SECOND * SYNC_INTERVAL){
+        if (now - prev > UNIT_SECOND * SYNC_INTERVAL || syncCount < JOIN_SYNC_COUNT){
             sync();
             prev = now;
+            syncCount++;
         }
     }
 }
+
 
 int main(){
     srand(time(0));
@@ -136,6 +157,13 @@ int main(){
         }else if (msg.type == MessageType::PLAY){
             thread t2(handlePlay, msg);
             t2.detach();
+        }else if (msg.type == MessageType::PAUSE){
+            handlePause();
+        }
+        if (recvSyncCount >= JOIN_SYNC_COUNT && hasJoined && !isStateFetched){
+            printf("Synced with server\n");
+            isStateFetched = true;
+            askForState();
         }
     }
     t1.join();

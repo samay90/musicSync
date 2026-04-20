@@ -12,6 +12,7 @@ enum MessageType {
     SYNC,
     PLAY,
     PAUSE,
+    STATE,
     LEAVE
 };
 
@@ -44,5 +45,11 @@ struct Time{
     }
 };
 
+struct MusicState{
+    char name[BUFFER_SIZE];
+    ll position;
+    ll timeStamp;
+    bool isPlaying;
+};
 
 #endif

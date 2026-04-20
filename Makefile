@@ -7,4 +7,5 @@ client: client.cpp types.hpp functions.hpp define.hpp player.hpp modules/miniaud
 	g++ client.cpp -o client -lpthread
 
 clean:
+	touch server client
 	rm server client

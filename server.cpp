@@ -11,7 +11,12 @@ using namespace std;
 
 int socketfd;
 map<int, Device> users;
-mutex users_mtx;
+
+MusicState musicState;
+
+void sendPacket(Message msg, sockaddr_in c_addr){
+    sendto(socketfd, &msg, sizeof(msg), 0, (sockaddr*)&c_addr, sizeof(c_addr));
+}
 
 void broadcast(Message msg){
     for (auto &[_, device] : users){
@@ -19,8 +24,16 @@ void broadcast(Message msg){
         c_addr.sin_family = AF_INET;
         c_addr.sin_addr.s_addr = device.ip;
         c_addr.sin_port = device.port;
-        sendto(socketfd, &msg, sizeof(msg), 0, (sockaddr*)&c_addr, sizeof(c_addr));
+        sendPacket(msg, c_addr);
     }
+}
+
+void sendState(){
+    Message msg;
+    msg.type = musicState.isPlaying ? MessageType::PLAY : MessageType::PAUSE;
+    msg.timestamps[0] = musicState.timeStamp;
+    msg.timestamps[1] = musicState.position;
+    broadcast(msg);
 }
 
 void handleJoin(Message msg, sockaddr_in c_addr){
@@ -68,7 +81,7 @@ void handleSync(Message msg){
     c_addr.sin_addr.s_addr = device.ip;
     c_addr.sin_port = device.port;
     msg.timestamps[2] = getTime();
-    sendto(socketfd, &msg, sizeof(msg), 0, (sockaddr*)&c_addr, sizeof(c_addr));
+    sendPacket(msg, c_addr);
 }
 
 void handlePlay(){
@@ -78,9 +91,26 @@ void handlePlay(){
     msg.type = MessageType::PLAY;
     msg.uid = -1;
     msg.timestamps[0] = now + UNIT_SECOND;
+    msg.timestamps[1] = musicState.position;
+    musicState.isPlaying = true;
+    musicState.timeStamp = msg.timestamps[0];
     broadcast(msg);
 }
 
+void handlePause(){
+    printf("\nPausing...\n");
+    if (!musicState.isPlaying){
+        return;
+    }
+    ll now = getTime();
+    ll elapsed_ns = now - musicState.timeStamp;
+    musicState.position += (elapsed_ns * SAMPLE_RATE) / 1000000000LL;
+    musicState.isPlaying = false;
+    musicState.timeStamp = now;
+    Message msg;
+    msg.type = MessageType::PAUSE;
+    broadcast(msg);
+}
 void listner(){
     while (1){
         Message msg;
@@ -95,6 +125,8 @@ void listner(){
         }else if (msg.type == MessageType::SYNC){
             msg.timestamps[1] = now;
             handleSync(msg);
+        }else if (msg.type == MessageType::STATE){
+            sendState();
         }
     }
 }
@@ -104,8 +136,12 @@ void printInstructions(){
 }
 
 
-
 int main(){
+    musicState.isPlaying = false;
+    musicState.position = 0;
+    musicState.timeStamp = getTime();
+    strcpy(musicState.name, "song.mp3");
+
     signal(SIGINT, handleExit);
     socketfd = socket(AF_INET, SOCK_DGRAM, 0);
     struct sockaddr_in address;
@@ -118,8 +154,10 @@ int main(){
     while (1){
         char buffer;
         cin >> buffer;
-        if (buffer == 'P' || buffer == 'p'){
+        if (buffer == '3'){
             handlePlay();
+        }else if (buffer == '4'){
+            handlePause();
         }
     }
     t1.join();
