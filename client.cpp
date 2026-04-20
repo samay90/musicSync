@@ -4,10 +4,10 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <csignal>
-#include "types.hpp"
-#include "functions.hpp"
-#include "define.hpp"
-#include "player.hpp"
+#include "lib/types.hpp"
+#include "lib/functions.hpp"
+#include "lib/define.hpp"
+#include "lib/player.hpp"
 using namespace std;
 
 int uid, socketfd;

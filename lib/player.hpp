@@ -6,7 +6,7 @@
 using namespace std;
 
 #define MINIAUDIO_IMPLEMENTATION
-#include "modules/miniaudio.h"
+#include "../modules/miniaudio.h"
 #include "define.hpp"
 #include "types.hpp"
 

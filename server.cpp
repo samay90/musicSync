@@ -4,9 +4,9 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <csignal>
-#include "types.hpp"
-#include "functions.hpp"
-#include "define.hpp"
+#include "lib/types.hpp"
+#include "lib/functions.hpp"
+#include "lib/define.hpp"
 using namespace std;
 
 int socketfd;

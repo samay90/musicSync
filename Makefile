@@ -1,9 +1,9 @@
 all: clean server client
 
-server: server.cpp types.hpp functions.hpp define.hpp
+server: server.cpp lib/types.hpp lib/functions.hpp lib/define.hpp
 	g++ server.cpp -o server -lpthread
 
-client: client.cpp types.hpp functions.hpp define.hpp player.hpp modules/miniaudio.h
+client: client.cpp lib/types.hpp lib/functions.hpp lib/define.hpp lib/player.hpp modules/miniaudio.h
 	g++ client.cpp -o client -lpthread
 
 clean:
