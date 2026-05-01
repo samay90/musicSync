@@ -13,6 +13,7 @@ enum MessageType {
     PLAY,
     PAUSE,
     STATE,
+    SURROUND,
     LEAVE
 };
 

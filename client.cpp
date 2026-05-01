@@ -17,6 +17,9 @@ bool hasJoined = false;
 int syncCount = 0;
 int recvSyncCount = 0;
 bool isStateFetched = false;
+int deviceId = -1;
+int totalDevices = 1;
+bool isSurround = false;
 string songName;
 mutex sendMutex;
 
@@ -57,6 +60,8 @@ void joinRoom(){
 }
 
 void handleJoin(Message msg){
+    deviceId = msg.timestamps[0];
+    totalDevices = msg.timestamps[1];
     if (msg.uid != uid){
         printf("[JOIN] %s joined the room\n", msg.data);
     }else{
@@ -76,6 +81,8 @@ void leaveRoom(int sig){
 }
 
 void handleLeave(Message msg){
+    deviceId = msg.timestamps[0];
+    totalDevices = msg.timestamps[1];
     if (msg.uid != -1){
         printf("[LEAVE] %s left the room\n", msg.data);
     }else{
@@ -101,39 +108,34 @@ void handleSync(Message msg){
 
 void handlePlay(Message msg) {
     ma_sound_stop(&sound);
-    ll now = getServerTime(clientClock);
-    ll scheduleServerTime = msg.timestamps[0];
-    ll diff = scheduleServerTime - now;
+    
     string newSongName(msg.data);
-    if (songName != newSongName){
+    if (songName != newSongName) {
         songName = newSongName;
         if (!downloadSong(songName)) {
             printf("[ERROR] Could not download song, aborting playback\n");
             return;
         }
-        newSongName = filePath("/music/") + newSongName;
-        loadSong(newSongName);
+        string fullPath = filePath("/music/") + songName;
+        loadSong(fullPath);
         printf("[UPDATE] Now playing: %s\n", songName.c_str());
-    }else{
-        printf("[EVENT] Playing\n");
     }
+    ll now = getServerTime(clientClock);
+    ll scheduleServerTime = msg.timestamps[0];
+    ll diff = scheduleServerTime - now;
+    ll sample_pos;
     if (diff > 0) {
         waitUntil(scheduleServerTime, clientClock);
-        ll actualNow = getServerTime(clientClock);
-        ll late_ns = actualNow - scheduleServerTime;
-        ll late_samples = (late_ns * SAMPLE_RATE) / 1000000000LL;
-        ll sample_pos = msg.timestamps[1] + late_samples;
-        if (sample_pos < 0) sample_pos = 0;
-        playFromSample(sample_pos);
-
+        return handlePlay(msg);
     } else {
-        ll late_ns = -diff;
-        ll sample_pos = msg.timestamps[1] + (late_ns * SAMPLE_RATE) / 1000000000LL;
-        if (sample_pos < 0) sample_pos = 0;
-        playFromSample(sample_pos);
+        printf("[EVENT] Resuming\n");
+        ll late_ns = -(scheduleServerTime - getServerTime(clientClock));
+        sample_pos = msg.timestamps[1] + (late_ns * SAMPLE_RATE) / 1000000000LL;
     }
-}
 
+    if (sample_pos < 0) sample_pos = 0;
+    playFromSample(sample_pos);
+}
 void handlePause(){
     printf("\n[EVENT] Paused\n");
     ma_sound_stop(&sound);
@@ -151,6 +153,44 @@ void autoSync(){
     }
 }
 
+void handleSurround(Message msg){
+    if (msg.timestamps[0] == -1){
+        setVolume((float)1);
+        printf("\n[EVENT] Surround sound off\n");
+        isSurround = false; 
+        return;
+    }
+    printf("\n[EVENT] Surround sound on, Seq No: %d\n", deviceId);
+    isSurround = true;
+}
+
+
+void surroundController() {
+    ll prev = 0; 
+
+    while (true) {
+        if (!isSurround) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            continue;
+        }
+
+        ll currentTime = getTime();
+        if (currentTime - prev >= SURROUND_CHANGE_GAP) {
+            
+            double timeComponent = (double)getServerTime(clientClock) / (double)UNIT_SECOND;
+            
+            double phaseOffset = (double)deviceId * 2.0 * M_PI / (double)totalDevices;
+            
+            float volume = (float)((std::sin(timeComponent + phaseOffset) + 1.0) / 2.0);
+            
+            setVolume(volume);
+            prev = currentTime;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+}
+
 
 int main(){
     srand(time(0));
@@ -164,6 +204,7 @@ int main(){
     socklen_t len = sizeof(address);
     joinRoom();
     thread t1(autoSync);
+    thread t2(surroundController);
     while (1){
         Message msg;
         recvfrom(socketfd, &msg, sizeof(msg), 0, (sockaddr*)&address, &len);
@@ -180,6 +221,8 @@ int main(){
             t2.detach();
         }else if (msg.type == MessageType::PAUSE){
             handlePause();
+        }else if (msg.type == MessageType::SURROUND){
+            handleSurround(msg);
         }
         if (recvSyncCount >= JOIN_SYNC_COUNT && hasJoined && !isStateFetched){
             printf("Synced with server\n");
@@ -188,6 +231,7 @@ int main(){
         }
     }
     t1.join();
+    t2.join();
     close(socketfd);
     cleanupAudio();
     return 0;

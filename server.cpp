@@ -15,18 +15,25 @@ using namespace std;
 int socketfd;
 map<int, Device> users;
 
+ll DELAY_TIME = UNIT_SECOND;
+
 MusicState musicState;
 
 void sendPacket(Message msg, sockaddr_in c_addr){
     sendto(socketfd, &msg, sizeof(msg), 0, (sockaddr*)&c_addr, sizeof(c_addr));
 }
 
-void broadcast(Message msg){
+void broadcast(Message msg, bool sendDeviceID = false){
+    int cnt = 0;
     for (auto &[_, device] : users){
         sockaddr_in c_addr;
         c_addr.sin_family = AF_INET;
         c_addr.sin_addr.s_addr = device.ip;
         c_addr.sin_port = device.port;
+        if (sendDeviceID){
+            msg.timestamps[0] = cnt++;
+            msg.timestamps[1] = users.size();
+        }
         sendPacket(msg, c_addr);
     }
 }
@@ -52,7 +59,7 @@ void handleJoin(Message msg, sockaddr_in c_addr){
     brd_msg.type = MessageType::JOIN;
     strcpy(brd_msg.data, msg.data);
     brd_msg.uid = msg.uid;
-    broadcast(brd_msg);
+    broadcast(brd_msg, true);
 }
 
 void leaveRoom(Message msg){
@@ -62,7 +69,7 @@ void leaveRoom(Message msg){
     strcpy(brd_msg.data, users[msg.uid].name);
     brd_msg.uid = msg.uid;
     users.erase(msg.uid);
-    broadcast(brd_msg);
+    broadcast(brd_msg, true);
 }
 
 void handleExit(int sig){
@@ -143,11 +150,20 @@ void listner(){
 }
 
 void printInstructions(){
-    cout << "1. JOIN\n2. SYNC\n3. PLAY\n4. PAUSE" << endl;
+    printf("------ Instructions ------\n");
+    printf("1. List available songs\n");
+    printf("2. Select a song\n");
+    printf("3. Play the song\n");
+    printf("4. Pause the song\n");
+    printf("5. Seek +10 seconds\n");
+    printf("6. Seek -10 seconds\n");
+    printf("7. Turn on Surround Sound\n");
+    printf("8. Turn off Surround Sound\n");
+    cout << endl;
 }
 
 void listSongs(){
-    string songs = runCommand("ls " + filePath("/music/") + " | grep '\\.mp3$' | sed 's/\\.mp3$//' | nl -w1 -s'. '");
+    string songs = runCommand("ls " + filePath("/music/") + " | sed 's/\\.mp3$//' | nl -w1 -s'. '");
     printf("------ Available Songs ------\n");
     cout << songs << endl;
     cout << endl;
@@ -158,7 +174,7 @@ string getSongName(int number) {
         printf("[ERROR] Song number must be greater than 0\n");
         return "";
     }
-    string cmd = "ls " + filePath("/music/") + " | grep '\\.mp3$' | sed -n '" + to_string(number) + "p' 2>/dev/null";
+    string cmd = "ls " + filePath("/music/") + " | sed -n '" + to_string(number) + "p' 2>/dev/null";
     string name = runCommand(cmd);
     if (!name.empty() && name.back() == '\n') name.pop_back();
     if (name.empty()){
@@ -204,10 +220,27 @@ void handleSeek(int offset){
         msg.uid = -1;
         msg.timestamps[0] = now + UNIT_SECOND;
         msg.timestamps[1] = musicState.position;
+        strcpy(msg.data, musicState.name);
         musicState.timeStamp = msg.timestamps[0];
         broadcast(msg);
     }
 }
+
+void handleSurround(bool state){
+    Message msg;
+    msg.type = MessageType::SURROUND;
+    msg.uid = -1;
+    if (state){
+        printf("\n[EVENT] Surround sound on\n");
+        msg.timestamps[0] = 1;
+    }else{
+        printf("\n[EVENT] Surround sound off\n");
+
+        msg.timestamps[0] = -1;
+    }
+    broadcast(msg);
+}
+
 
 
 int main(){
@@ -245,6 +278,12 @@ int main(){
             handleSeek(10);
         }else if (buffer == '6'){
             handleSeek(-10);
+        }else if (buffer == '7'){
+            handleSurround(true);
+        }else if (buffer == '8'){
+            handleSurround(false);
+        }else if (buffer == '?'){
+            printInstructions();
         }
     }
     t1.join();

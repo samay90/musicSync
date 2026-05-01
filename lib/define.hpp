@@ -11,5 +11,6 @@
 #define JOIN_SYNC_COUNT 10
 #define TCP_PORT 8080
 #define MUSIC_DIR "/music/"
-
+#define SURROUND_CHANGE_GAP (UNIT_SECOND / 100.0)
+#define DIV_FACTOR UNIT_SECOND
 #endif

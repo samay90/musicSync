@@ -35,4 +35,8 @@ void loadSong(const string& path){
     }
 }
 
+void setVolume(float volume) {
+    ma_sound_set_volume(&sound, volume);
+}
+
 #endif
