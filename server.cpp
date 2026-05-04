@@ -19,18 +19,22 @@ ll DELAY_TIME = UNIT_SECOND;
 
 MusicState musicState;
 
-void sendPacket(Message msg, sockaddr_in c_addr){
-    sendto(socketfd, &msg, sizeof(msg), 0, (sockaddr*)&c_addr, sizeof(c_addr));
+void sendPacket(Message msg, sockaddr_in c_addr)
+{
+    sendto(socketfd, &msg, sizeof(msg), 0, (sockaddr *)&c_addr, sizeof(c_addr));
 }
 
-void broadcast(Message msg, bool sendDeviceID = false){
+void broadcast(Message msg, bool sendDeviceID = false)
+{
     int cnt = 0;
-    for (auto &[_, device] : users){
+    for (auto &[_, device] : users)
+    {
         sockaddr_in c_addr;
         c_addr.sin_family = AF_INET;
         c_addr.sin_addr.s_addr = device.ip;
         c_addr.sin_port = device.port;
-        if (sendDeviceID){
+        if (sendDeviceID)
+        {
             msg.timestamps[0] = cnt++;
             msg.timestamps[1] = users.size();
         }
@@ -38,7 +42,8 @@ void broadcast(Message msg, bool sendDeviceID = false){
     }
 }
 
-void sendState(){
+void sendState()
+{
     Message msg;
     msg.type = musicState.isPlaying ? MessageType::PLAY : MessageType::PAUSE;
     msg.timestamps[0] = musicState.timeStamp;
@@ -47,7 +52,8 @@ void sendState(){
     broadcast(msg);
 }
 
-void handleJoin(Message msg, sockaddr_in c_addr){
+void handleJoin(Message msg, sockaddr_in c_addr)
+{
     Device device;
     device.ip = c_addr.sin_addr.s_addr;
     device.port = c_addr.sin_port;
@@ -62,7 +68,8 @@ void handleJoin(Message msg, sockaddr_in c_addr){
     broadcast(brd_msg, true);
 }
 
-void leaveRoom(Message msg){
+void leaveRoom(Message msg)
+{
     printf("[LEAVE] %s left the room\n", users[msg.uid].name);
     Message brd_msg;
     brd_msg.type = MessageType::LEAVE;
@@ -72,7 +79,8 @@ void leaveRoom(Message msg){
     broadcast(brd_msg, true);
 }
 
-void handleExit(int sig){
+void handleExit(int sig)
+{
     Message msg;
     msg.type = MessageType::LEAVE;
     msg.uid = -1;
@@ -82,8 +90,10 @@ void handleExit(int sig){
     exit(0);
 }
 
-void handleSync(Message msg){
-    if (!users.count(msg.uid)){
+void handleSync(Message msg)
+{
+    if (!users.count(msg.uid))
+    {
         return;
     }
     Device device = users[msg.uid];
@@ -95,8 +105,10 @@ void handleSync(Message msg){
     sendPacket(msg, c_addr);
 }
 
-void handlePlay(){
-    if (musicState.name[0] == '\0'){
+void handlePlay()
+{
+    if (musicState.name[0] == '\0')
+    {
         printf("[ERROR] No song selected\n");
         return;
     }
@@ -114,9 +126,11 @@ void handlePlay(){
     broadcast(msg);
 }
 
-void handlePause(){
+void handlePause()
+{
     printf("\n[EVENT] Paused\n");
-    if (!musicState.isPlaying){
+    if (!musicState.isPlaying)
+    {
         return;
     }
     ll now = getTime();
@@ -129,27 +143,37 @@ void handlePause(){
     broadcast(msg);
 }
 
-void listner(){
-    while (1){
+void listner()
+{
+    while (1)
+    {
         Message msg;
         sockaddr_in c_addr;
         socklen_t len = sizeof(c_addr);
-        recvfrom(socketfd, &msg, sizeof(msg), 0, (sockaddr*)&c_addr, &len);
+        recvfrom(socketfd, &msg, sizeof(msg), 0, (sockaddr *)&c_addr, &len);
         ll now = getTime();
-        if(msg.type == MessageType::JOIN){
+        if (msg.type == MessageType::JOIN)
+        {
             handleJoin(msg, c_addr);
-        }else if (msg.type == MessageType::LEAVE){
+        }
+        else if (msg.type == MessageType::LEAVE)
+        {
             leaveRoom(msg);
-        }else if (msg.type == MessageType::SYNC){
+        }
+        else if (msg.type == MessageType::SYNC)
+        {
             msg.timestamps[1] = now;
             handleSync(msg);
-        }else if (msg.type == MessageType::STATE){
+        }
+        else if (msg.type == MessageType::STATE)
+        {
             sendState();
         }
     }
 }
 
-void printInstructions(){
+void printInstructions()
+{
     printf("------ Instructions ------\n");
     printf("1. List available songs\n");
     printf("2. Select a song\n");
@@ -162,40 +186,49 @@ void printInstructions(){
     cout << endl;
 }
 
-void listSongs(){
+void listSongs()
+{
     string songs = runCommand("ls " + filePath("/music/") + " | sed 's/\\.mp3$//' | nl -w1 -s'. '");
     printf("------ Available Songs ------\n");
     cout << songs << endl;
     cout << endl;
 }
 
-string getSongName(int number) {
-    if (number <= 0){
+string getSongName(int number)
+{
+    if (number <= 0)
+    {
         printf("[ERROR] Song number must be greater than 0\n");
         return "";
     }
     string cmd = "ls " + filePath("/music/") + " | sed -n '" + to_string(number) + "p' 2>/dev/null";
     string name = runCommand(cmd);
-    if (!name.empty() && name.back() == '\n') name.pop_back();
-    if (name.empty()){
+    if (!name.empty() && name.back() == '\n')
+        name.pop_back();
+    if (name.empty())
+    {
         printf("[ERROR] No song at number %d\n", number);
         return "";
     }
     return name;
 }
 
-void handleChangeMusic(string songString){
+void handleChangeMusic(string songString)
+{
     int songNumber;
-    try{
+    try
+    {
         songNumber = stoi(songString);
     }
-    catch(const std::exception& e){
+    catch (const std::exception &e)
+    {
         printf("[ERROR] Invalid song number\n");
         return;
     }
-    
+
     string songName = getSongName(songNumber);
-    if (songName.empty()){
+    if (songName.empty())
+    {
         return;
     }
     cout << "[UPDATE] Now playing: " << songName << endl;
@@ -204,17 +237,21 @@ void handleChangeMusic(string songString){
     handlePlay();
 }
 
-void handleSeek(int offset){
+void handleSeek(int offset)
+{
     printf("\n[EVENT] Seek %ds\n", offset);
     ll now = getTime();
-    if (musicState.isPlaying){
+    if (musicState.isPlaying)
+    {
         ll elapsed_ns = now - musicState.timeStamp;
         musicState.position += (elapsed_ns * SAMPLE_RATE) / 1000000000LL;
     }
     musicState.position += (ll)(offset * SAMPLE_RATE);
-    if (musicState.position < 0) musicState.position = 0;
+    if (musicState.position < 0)
+        musicState.position = 0;
     musicState.timeStamp = now;
-    if (musicState.isPlaying){
+    if (musicState.isPlaying)
+    {
         Message msg;
         msg.type = MessageType::PLAY;
         msg.uid = -1;
@@ -226,14 +263,18 @@ void handleSeek(int offset){
     }
 }
 
-void handleSurround(bool state){
+void handleSurround(bool state)
+{
     Message msg;
     msg.type = MessageType::SURROUND;
     msg.uid = -1;
-    if (state){
+    if (state)
+    {
         printf("\n[EVENT] Surround sound on\n");
         msg.timestamps[0] = 1;
-    }else{
+    }
+    else
+    {
         printf("\n[EVENT] Surround sound off\n");
 
         msg.timestamps[0] = -1;
@@ -241,9 +282,8 @@ void handleSurround(bool state){
     broadcast(msg);
 }
 
-
-
-int main(){
+int main()
+{
     musicState.isPlaying = false;
     musicState.position = 0;
     musicState.timeStamp = -1;
@@ -255,34 +295,52 @@ int main(){
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(PORT);
-    bind(socketfd, (struct sockaddr*)&address, sizeof(address));
+    bind(socketfd, (struct sockaddr *)&address, sizeof(address));
     thread t1(listner);
     thread t2(tcpFileServer);
     printInstructions();
-    while (1){
+    while (1)
+    {
         char buffer;
         cin >> buffer;
-        if (buffer == '1'){
+        if (buffer == '1')
+        {
             listSongs();
-        }else if (buffer == '2'){
+        }
+        else if (buffer == '2')
+        {
             cout << "Enter song number: ";
-            string song; cin >> song;
+            string song;
+            cin >> song;
             cout << endl;
             handleChangeMusic(song);
         }
-        else if (buffer == '3'){
+        else if (buffer == '3')
+        {
             handlePlay();
-        }else if (buffer == '4'){
+        }
+        else if (buffer == '4')
+        {
             handlePause();
-        }else if (buffer == '5'){
+        }
+        else if (buffer == '5')
+        {
             handleSeek(10);
-        }else if (buffer == '6'){
+        }
+        else if (buffer == '6')
+        {
             handleSeek(-10);
-        }else if (buffer == '7'){
+        }
+        else if (buffer == '7')
+        {
             handleSurround(true);
-        }else if (buffer == '8'){
+        }
+        else if (buffer == '8')
+        {
             handleSurround(false);
-        }else if (buffer == '?'){
+        }
+        else if (buffer == '?')
+        {
             printInstructions();
         }
     }
