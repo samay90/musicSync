@@ -18,7 +18,6 @@ bool downloadSong(const string& songName, int maxRetries = 3) {
     string localPath = musicDir + songName;
     string tmpPath   = localPath + ".tmp";
 
-    // Cache check — fully downloaded file already exists
     if (access(localPath.c_str(), F_OK) == 0) {
         printf("[CACHE] Already have: %s\n", songName.c_str());
         return true;
@@ -29,7 +28,6 @@ bool downloadSong(const string& songName, int maxRetries = 3) {
             printf("[RETRY] Attempt %d/%d for: %s\n", attempt, maxRetries, songName.c_str());
         }
 
-        // Check if a partial .tmp exists from a previous attempt
         off_t resumeFrom = 0;
         struct stat st;
         if (stat(tmpPath.c_str(), &st) == 0 && st.st_size > 0) {
@@ -44,7 +42,6 @@ bool downloadSong(const string& songName, int maxRetries = 3) {
             continue;
         }
 
-        // Socket optimizations
         int flag = 1, rcvbuf = 262144;
         setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
         setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
@@ -65,7 +62,6 @@ bool downloadSong(const string& songName, int maxRetries = 3) {
             continue;
         }
 
-        // Send filename (fixed 256 bytes)
         char filename[256] = {};
         strncpy(filename, songName.c_str(), sizeof(filename) - 1);
         if (write(sockfd, filename, sizeof(filename)) != sizeof(filename)) {
@@ -75,7 +71,6 @@ bool downloadSong(const string& songName, int maxRetries = 3) {
             continue;
         }
 
-        // Send resume offset
         if (write(sockfd, &resumeFrom, sizeof(resumeFrom)) != sizeof(resumeFrom)) {
             printf("[ERROR] Failed to send resume offset\n");
             close(sockfd);
@@ -83,7 +78,6 @@ bool downloadSong(const string& songName, int maxRetries = 3) {
             continue;
         }
 
-        // Receive total file size
         off_t fileSize = 0;
         if (!recvExact(sockfd, &fileSize, sizeof(fileSize)) || fileSize <= 0) {
             printf("[ERROR] Song not found on server: %s\n", songName.c_str());
@@ -100,7 +94,6 @@ bool downloadSong(const string& songName, int maxRetries = 3) {
         printf("[DOWNLOAD] Fetching %s (%ld bytes)... (attempt %d, offset %ld)\n",
                songName.c_str(), (long)fileSize, attempt, (long)resumeFrom);
 
-        // O_APPEND if resuming, O_TRUNC if starting fresh
         int openFlags = O_WRONLY | O_CREAT | ((resumeFrom > 0) ? O_APPEND : O_TRUNC);
         int filefd = open(tmpPath.c_str(), openFlags, 0644);
         if (filefd < 0) {

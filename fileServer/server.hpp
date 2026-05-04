@@ -30,14 +30,12 @@ void tcpFileServer() {
         int connfd = accept(tcpfd, (sockaddr*)&client_addr, &len);
         if (connfd < 0) continue;
 
-        // 1. Receive filename (expecting exactly 256 bytes based on client)
         char filename[256] = {};
         if (!recvExact(connfd, filename, sizeof(filename))) {
             close(connfd);
             continue;
         }
 
-        // Security: Prevent path traversal
         if (strstr(filename, "..") || strchr(filename, '/') || strchr(filename, '\\')) {
             printf("[TCP] Rejected unsafe filename: %s\n", filename);
             off_t zero = 0;
@@ -46,7 +44,6 @@ void tcpFileServer() {
             continue;
         }
 
-        // 2. Receive resume offset (FIXED: Server must read this to match client)
         off_t resumeFrom = 0;
         if (!recvExact(connfd, &resumeFrom, sizeof(resumeFrom))) {
             close(connfd);
@@ -70,10 +67,8 @@ void tcpFileServer() {
 
         if (resumeFrom < 0 || resumeFrom >= fileSize) resumeFrom = 0;
 
-        // 3. Send total file size
         write(connfd, &fileSize, sizeof(fileSize));
 
-        // 4. Send file efficiently directly from kernel memory
         off_t offset = resumeFrom;
         while (offset < fileSize) {
             ssize_t sent = sendfile(connfd, filefd, &offset, fileSize - offset);
